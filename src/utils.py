@@ -19,23 +19,8 @@ def get_user():
 
 def get_user_groups():
     """Get all groups the current user belongs to."""
-    user = get_user()
-    groups_command = f"groups {user} > groups.txt"
-    remove_command = "rm groups.txt"
-    
-    subprocess.run(groups_command, shell=True)
-    
-    group_list = []
-    try:
-        with open("groups.txt", 'r') as file:
-            for line in file:
-                parts = line.strip().split(':')
-                if len(parts) == 2:
-                    group_list = parts[1].strip().split()
-                    break
-    finally:
-        subprocess.run(remove_command, shell=True)
-    
+    groups_cmd_out = subprocess.run(["groups"], stdout=subprocess.PIPE)
+    group_list = groups_cmd_out.stdout.decode().strip().split()
     return group_list
 
 
