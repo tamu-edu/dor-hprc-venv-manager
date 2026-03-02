@@ -40,7 +40,7 @@ directories:
 	@mkdir -p $(BINDIR)
 	@mkdir -p $(LOGDIR)
 	@touch $(LOGDIR)/venv.log
-	@chmod uog+rw $(LOGDIR)/venv.log
+	@chmod uog+rw $(LOGDIR)/venv.log 2>/dev/null || echo "Skipped changing permission for $(LOGDIR)/venv.log"
 
 # Template processing rules
 activate_venv: $(SRCDIR)/activate_venv.template
@@ -48,7 +48,7 @@ activate_venv: $(SRCDIR)/activate_venv.template
 	@cp $< $@
 	@sed -i 's|<BINDIR>|$(BINDIR)|g' $@
 	@sed -i 's|<LOGDIR>|$(LOGDIR)|g' $@
-	@chmod +x $@
+	@chmod +x $@ 2>/dev/null || echo "Skipped changing permission for $@"
 
 list_venvs: $(SRCDIR)/list_venvs.template
 	@echo "Processing list_venvs..."
@@ -56,7 +56,7 @@ list_venvs: $(SRCDIR)/list_venvs.template
 	@sed -i 's|<LOGDIR>|$(LOGDIR)|g' $@
 	@sed -i 's|<METDIR>|$(METDIR)|g' $@
 	@sed -i 's|<GROUPMETDIR>|$(GROUPMETDIR)|g' $@
-	@chmod +x $@
+	@chmod +x $@ 2>/dev/null || echo "Skipped changing permission for $@"
 
 create_venv: $(SRCDIR)/create_venv.template
 	@echo "Processing create_venv..."
@@ -64,7 +64,7 @@ create_venv: $(SRCDIR)/create_venv.template
 	@sed -i 's|<LOGDIR>|$(LOGDIR)|g' $@
 	@sed -i 's|<METDIR>|$(METDIR)|g' $@
 	@sed -i 's|<GROUPMETDIR>|$(GROUPMETDIR)|g' $@
-	@chmod +x $@
+	@chmod +x $@ 2>/dev/null || echo "Skipped changing permission for $@"
 
 delete_venv: $(SRCDIR)/delete_venv.template
 	@echo "Processing delete_venv..."
@@ -72,7 +72,7 @@ delete_venv: $(SRCDIR)/delete_venv.template
 	@sed -i 's|<LOGDIR>|$(LOGDIR)|g' $@
 	@sed -i 's|<METDIR>|$(METDIR)|g' $@
 	@sed -i 's|<GROUPMETDIR>|$(GROUPMETDIR)|g' $@
-	@chmod +x $@
+	@chmod +x $@ 2>/dev/null || echo "Skipped changing permission for $@"
 
 add_venv:
 	@echo "Processing add_venv..."
@@ -90,7 +90,7 @@ add_venv:
 		echo "Error: Neither add_venv.template nor add_venv found in $(SRCDIR)"; \
 		exit 1; \
 	fi
-	@chmod +x $@
+	@chmod +x $@ 2>/dev/null || echo "Skipped changing permission for $@"
 
 json_to_command:
 	@echo "Processing json_to_command..."
@@ -122,7 +122,7 @@ install: build
 	@mv utils.py $(BINDIR)/
 	@mv json_to_command $(BINDIR)/
 	@mv add_venv $(BINDIR)/
-	@chmod +x $(BINDIR)/*
+	@chmod +x $(BINDIR)/* 2>/dev/null || echo "Skipped changing permission for $(BINDIR)"
 	@echo ""
 	@echo "Installation completed successfully!"
 	@echo ""
