@@ -223,7 +223,7 @@ def main():
     group.add_argument("-a", action="store_true", help="List all user's environments in JSON format (user + groups).")
 
     parser.add_argument("-n", action="store_true", help="List environment names only (use with -u, -g, or -a).")
-    parser.add_argument("-l", action="store_true", help="Disable logging for this run.")
+    parser.add_argument("--disable-logging", dest="l", action="store_true", help="Disable logging for this run.")
     parser.add_argument("-h", action="store_true", help="Show this help menu.")
 
     args = parser.parse_args()
