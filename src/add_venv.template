@@ -15,7 +15,7 @@ from utils import get_user, get_user_metaloc
 def get_py_versions():
     captureCommand = "/sw/local/bin/toolchains | grep Python > captured-output.txt"
     removeCommand = "rm captured-output.txt"
-    subprocess.run(captureCommand, shell=True)
+    subprocess.run(captureCommand, shell=True, executable='/bin/bash')
     py_versions = {}
     tc_versions = {}
     with open("captured-output.txt", "r") as file:
@@ -28,7 +28,7 @@ def get_py_versions():
                 continue
             else:
                 py_versions[words[6]] = words[2]
-    subprocess.run(removeCommand, shell=True)
+    subprocess.run(removeCommand, shell=True, executable='/bin/bash')
     return [py_versions, tc_versions]
 
 def detect_venv_python_version(venv_path):
@@ -52,7 +52,7 @@ def detect_venv_python_version(venv_path):
         python_exe = os.path.join(venv_path, "bin", "python")
         if os.path.exists(python_exe):
             result = subprocess.run([python_exe, "--version"], 
-                                  capture_output=True, text=True)
+                                  capture_output=True, text=True, executable='/bin/bash')
             if result.returncode == 0:
                 # Parse "Python 3.11.5" output
                 version_match = re.search(r'Python (\d+\.\d+\.\d+)', result.stdout)
@@ -135,10 +135,10 @@ def add_virtualvenv(path_to_venv, desc, user_python_version):
     os.makedirs(venv_dir, exist_ok=True)
     
     move_command = f"mv {path_to_venv} {centralized_path}"
-    subprocess.run(move_command, shell=True)
+    subprocess.run(move_command, shell=True, executable='/bin/bash')
 
     symlink_command = f"ln -s {centralized_path} {path_to_venv}"
-    subprocess.run(symlink_command, shell=True)
+    subprocess.run(symlink_command, shell=True, executable='/bin/bash')
 
     _versions = get_py_versions()
     versions = _versions[0]
