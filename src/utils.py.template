@@ -27,7 +27,7 @@ def get_group_metaloc():
 
 def get_user_groups():
     """Get all groups the current user belongs to."""
-    groups_cmd_out = subprocess.run(["groups"], stdout=subprocess.PIPE)
+    groups_cmd_out = subprocess.run(["groups"], stdout=subprocess.PIPE, executable='/bin/bash')
     group_list = groups_cmd_out.stdout.decode().strip().split()
     return group_list
 
