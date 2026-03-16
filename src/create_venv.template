@@ -13,7 +13,7 @@ import datetime
 from utils import get_user, get_user_metaloc, get_group_metaloc
 
 def get_py_versions():
-    captureCommand = "/sw/local/bin/toolchains | grep Python > captured-output.txt"
+    captureCommand = "toolchains | grep Python > captured-output.txt"
     removeCommand = "rm captured-output.txt"
     subprocess.run(captureCommand, shell=True, executable='/bin/bash')
     py_versions = {}
