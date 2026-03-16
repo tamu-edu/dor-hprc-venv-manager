@@ -15,7 +15,7 @@ from utils import get_user, get_user_metaloc, get_group_metaloc
 def get_py_versions():
     captureCommand = "/sw/local/bin/toolchains | grep Python > captured-output.txt"
     removeCommand = "rm captured-output.txt"
-    subprocess.run(captureCommand, shell=True)
+    subprocess.run(captureCommand, shell=True, executable='/bin/bash')
     py_versions = {}
     tc_versions = {}
     with open("captured-output.txt", "r") as file:
@@ -28,7 +28,7 @@ def get_py_versions():
                 continue
             else:
                 py_versions[words[6]] = words[2]
-    subprocess.run(removeCommand, shell=True)
+    subprocess.run(removeCommand, shell=True, executable='/bin/bash')
     return [py_versions, tc_versions]
 
 def extract_python_version_from_toolchain(toolchain):
@@ -43,13 +43,13 @@ def check_group(group):
     check_command = f"groups {user} | grep {group} > check.txt"
     removeCommand = "rm check.txt"
 
-    subprocess.run(check_command, shell=True)
+    subprocess.run(check_command, shell=True, executable='/bin/bash')
     with open("check.txt", "r") as file:
         first_char = file.read(1)
         if not first_char:
-            subprocess.run(removeCommand, shell=True)
+            subprocess.run(removeCommand, shell=True, executable='/bin/bash')
             return False
-    subprocess.run(removeCommand, shell=True)
+    subprocess.run(removeCommand, shell=True, executable='/bin/bash')
     return True
 
 def create_virtualenv(venv_name, description, group, toolchain, user_python_version):
@@ -140,7 +140,7 @@ def create_virtualenv(venv_name, description, group, toolchain, user_python_vers
         creation_command = f"source /etc/profile && module load {gcccore_version} {python_version} && python3 -m venv --system-site-packages {venv_path}"
     else:
         creation_command = f"source /etc/profile && module load {toolchain} && python3 -m venv --system-site-packages {venv_path}"
-    subprocess.run(creation_command, shell=True)
+    subprocess.run(creation_command, shell=True, executable='/bin/bash')
 
     activate_script = os.path.join(venv_path, 'bin', 'activate')
     activate_command = ""
@@ -150,7 +150,7 @@ def create_virtualenv(venv_name, description, group, toolchain, user_python_vers
         activate_command = f"source /etc/profile && module load {gcccore_version} {python_version} && source {activate_script}"
     else:
         activate_command = f"source /etc/profile && module load {toolchain} && source {activate_script}"      
-    subprocess.run([f"{activate_command} && pip install --upgrade pip"], shell=True)
+    subprocess.run([f"{activate_command} && pip install --upgrade pip"], shell=True, executable='/bin/bash')
 
     update_metadata(metadata_file, venv_name, python_version, gcccore_version, group, toolchain, description)
     
