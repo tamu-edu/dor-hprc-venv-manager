@@ -44,6 +44,18 @@ mkdir -p logs
 # Copy template files and replace placeholders
 echo "Processing template files..."
 
+# Process modulair_cli
+if [ -f "src/modulair_cli.template" ]; then
+    cp src/modulair_cli.template modulair_cli.py
+    sed -i "s|<LOGDIR>|${default_logdir}|g" modulair_cli.py
+    sed -i "s|<METDIR>|${metadataloc}|g" modulair_cli.py
+    sed -i "s|<GROUPMETDIR>|${groupmetaloc}|g" modulair_cli.py
+    chmod +x modulair_cli.py
+else
+    echo "Error: modulair_cli.template not found in src/"
+    exit 1
+fi
+
 # Process activate_venv
 cp src/activate_venv.template activate_venv
 sed -i "s|<BINDIR>|${default_bindir}|g" activate_venv
@@ -118,6 +130,65 @@ mv delete_venv bin/
 mv utils.py bin/
 mv json_to_command bin/
 mv add_venv bin/
+mv modulair_cli.py bin/
+
+# Create shell wrapper for modulair that handles source'd activate
+cat > modulair << 'WRAPPER'
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check if script is being sourced
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    # Not sourced - run as Python CLI
+    if [[ "$1" == "deactivate" ]]; then
+        echo "To deactivate, run: source modulair deactivate"
+        exit 1
+    fi
+    exec python3 "${SCRIPT_DIR}/modulair_cli.py" "$@"
+fi
+
+# Script is being sourced - handle special cases
+case "$1" in
+    activate)
+        if [ -z "$2" ]; then
+            echo "Usage: source modulair activate <name>"
+            return 1
+        fi
+        eval "$(python3 "${SCRIPT_DIR}/modulair_cli.py" activate -e "$2")"
+        
+        # log the action
+        today=$(date +"%Y-%m-%d")
+        echo "$today $USER activate_venv $2" >> <LOGDIR>/venv.log
+        
+        echo ""
+        echo "When deactivating, run: source modulair deactivate"
+        ;;
+    deactivate)
+        echo "Running deactivate..."
+        deactivate 2>/dev/null || true
+        echo "Purging modules..."
+        ml purge
+        ;;
+    *)
+        echo "Usage: source modulair <command> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  source modulair activate <name>  - Activate a virtual environment"
+        echo "  source modulair deactivate      - Deactivate and purge modules"
+        echo ""
+        echo "Or run without 'source' for other commands:"
+        echo "  modulair --help"
+        echo "  modulair create <name> ..."
+        echo "  modulair list"
+        echo "  modulair delete <name>"
+        ;;
+esac
+WRAPPER
+
+sed -i "s|<LOGDIR>|${default_logdir}|g" modulair
+chmod +x modulair
+mv modulair bin/
 
 # Setup log directory and file
 echo "Setting up logging..."
@@ -133,15 +204,28 @@ echo "  Group metadata location: $groupmetaloc"
 echo "  Binary directory: $default_bindir"
 echo "  Log directory: $default_logdir"
 echo
-echo "To use ModuLair tools, add the following to your PATH:"
+echo "To use ModuLair, add the following to your PATH:"
 echo "  export PATH=\"${default_bindir}:\$PATH\""
 echo
 echo "Or run the tools directly from: ${default_bindir}"
 echo
-echo "Available tools:"
-echo "  - create_venv: Create new virtual environments"
-echo "  - list_venvs: List existing virtual environments"
-echo "  - activate_venv: Generate activation commands (use with 'source')"
-echo "  - delete_venv: Delete virtual environments"
-echo "  - add_venv: Add existing virtual environments to management"
+echo "Usage:"
+echo "  modulair --help"
+echo "  modulair create --help"
+echo "  modulair create <name> [-d description] [-g group] [-t toolchain] [-p python]"
+echo "  modulair list [-u|-g|-a] [-n]"
+echo "  modulair activate <name>"
+echo "  modulair delete <name> [-y]"
+echo
+echo "Examples:"
+echo "  modulair create myenv"
+echo "  modulair create myenv -d 'My environment' -g mygroup"
+echo "  modulair list"
+echo "  modulair activate myenv"
+echo ""
+echo "To activate an environment:"
+echo "  source modulair activate myenv"
+echo
+echo "To deactivate an environment:"
+echo "  source modulair deactivate"
 echo

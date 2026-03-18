@@ -13,9 +13,10 @@ Paper: https://dl.acm.org/doi/10.1145/3731599.3767435
 - [Managing Environments](#managing-environments)
   - [Listing Environments](#listing-environments)
   - [Activating an Environment](#activating-an-environment)
+  - [Deactivating an Environment](#deactivating-an-environment)
   - [Deleting an Environment](#deleting-an-environment)
 - [Sharing Environments](#sharing-environments)
-  - [Group Sharin (-g flag)](#group-sharing)
+  - [Group Sharing (-g flag)](#group-sharing)
 - [Key Features](#key-features)
 
 ---
@@ -117,17 +118,19 @@ export PATH="/path/to/dor-hprc-venv-manager/bin:$PATH"
 ## Quick Start
 
 ```bash
-create_venv newEnv -d "Cool new environment"
-list_venvs
-source activate_venv newEnv
-delete_venv newEnv
+modulair create newEnv -d "Cool new environment"
+modulair list
+source modulair activate newEnv
+source modulair deactivate
+modulair delete newEnv
 ```
 
 **What happens:**
 
 * Creates an environment named `newEnv` with a description
 * Lists environments to verify creation
-* Activates the environment
+* Activates the environment (must use `source`)
+* Deactivates the environment and purges modules (must use `source`)
 * Deletes it when no longer needed
 
 ---
@@ -139,7 +142,7 @@ delete_venv newEnv
 ModuLair detects the current Python interpreter and compiler toolchain using EasyBuild by reading EBROOT-prefixed variables (e.g., EBROOTPYTHON, EBROOTGCCCORE).
 
 ```bash
-create_venv my_env
+modulair create my_env
 ```
 
 It will:
@@ -153,7 +156,7 @@ It will:
 ### -p — Specify Python Version
 
 ```bash
-create_venv -p 3.11.5 my_env
+modulair create -p 3.11.5 my_env
 ```
 
 * Skips EBROOT detection
@@ -166,7 +169,7 @@ create_venv -p 3.11.5 my_env
 ### -t — Custom Toolchain
 
 ```bash
-create_venv -t "intelpython/2023b custom_module" my_env
+modulair create -t "intelpython/2023b custom_module" my_env
 ```
 
 * Records listed modules in metadata
@@ -180,7 +183,7 @@ create_venv -t "intelpython/2023b custom_module" my_env
 ### Listing Environments
 
 ```bash
-list_venvs
+modulair list
 ```
 
 Displays:
@@ -208,7 +211,7 @@ Displays:
 ### Activating an Environment
 
 ```bash
-source activate_venv my_env
+source modulair activate my_env
 ```
 
 * Loads modules from metadata
@@ -216,12 +219,24 @@ source activate_venv my_env
 
 ---
 
+### Deactivating an Environment
+
+```bash
+source modulair deactivate
+```
+
+* Runs the venv's built-in `deactivate`
+* Purges loaded modules with `ml purge`
+
+---
+
 ### Deleting an Environment
 
 ```bash
-delete_venv my_env
+modulair delete my_env
 ```
 
+* Prompts for confirmation (use `-y` to skip)
 * Removes the environment
 * Updates registry
 * Deletes related files
@@ -233,7 +248,7 @@ delete_venv my_env
 ### Group Sharing
 
 ```bash
-create_venv -g my_group my_env
+modulair create -g my_group my_env
 ```
 
 * Stores venv in group registry
@@ -249,4 +264,3 @@ create_venv -g my_group my_env
 * Shared environments for seamless collaboration
 * Metadata-driven management for reproducibility and GUI integration
 * Seamless activation with correct module loading
-
