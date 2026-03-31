@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
 """
-Centralized metadata utilities for ModuLair virtual environment manager.
+Utilities for ModuLair virtual environment manager.
 Handles traversing and loading metadata from both user and shared group environments.
 """
 
 import json
 import os
+import re
+import shutil
 import subprocess
+import textwrap
 
 
 def get_user():
@@ -223,3 +226,63 @@ def remove_environment_from_metadata(env_name):
         return (True, source_type, source_name, removed_env)
     
     return (False, source_type, source_name, None)
+
+
+def get_py_versions():
+    captureCommand = "toolchains | grep Python > captured-output.txt"
+    removeCommand = "rm captured-output.txt"
+    subprocess.run(captureCommand, shell=True, executable='/bin/bash')
+    py_versions = {}
+    tc_versions = {}
+    with open("captured-output.txt", "r") as file:
+        next(file)
+        for line in file:
+            words = line.split()
+            tc_versions[words[0]] = [words[2], words[6]]
+            if words[6] in py_versions:
+                continue
+            else:
+                py_versions[words[6]] = words[2]
+    subprocess.run(removeCommand, shell=True, executable='/bin/bash')
+    return [py_versions, tc_versions]
+
+
+def extract_python_version_from_toolchain(toolchain):
+    match = re.search(r'Python/(\d+\.\d+\.\d+)', toolchain)
+    if match:
+        return f"Python/{match.group(1)}"
+    return None
+
+
+def check_group(group):
+    user = get_user()
+    check_command = f"groups {user} | grep {group} > check.txt"
+    removeCommand = "rm check.txt"
+
+    subprocess.run(check_command, shell=True, executable='/bin/bash')
+    with open("check.txt", "r") as file:
+        first_char = file.read(1)
+        if not first_char:
+            subprocess.run(removeCommand, shell=True, executable='/bin/bash')
+            return False
+    subprocess.run(removeCommand, shell=True, executable='/bin/bash')
+    return True
+
+
+def get_terminal_width():
+    try:
+        return shutil.get_terminal_size().columns
+    except:
+        return 80
+
+
+def truncate_text(text, max_length):
+    if len(text) <= max_length:
+        return text
+    return text[:max_length-3] + "..."
+
+
+def wrap_text(text, width):
+    if len(text) <= width:
+        return [text]
+    return textwrap.wrap(text, width=width, break_long_words=True, break_on_hyphens=False)

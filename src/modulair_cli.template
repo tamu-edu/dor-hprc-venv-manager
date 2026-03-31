@@ -1,0 +1,542 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import json
+import subprocess
+import argparse
+import re
+import getpass
+import datetime
+import signal
+
+from utils import (
+    get_user,
+    get_user_metaloc,
+    get_group_metaloc,
+    get_user_groups,
+    load_user_metadata,
+    load_group_metadata,
+    load_all_metadata,
+    find_environment_by_name,
+    get_environment_path,
+    get_metadata_file_path,
+    update_metadata_file,
+    remove_environment_from_metadata,
+    get_py_versions,
+    extract_python_version_from_toolchain,
+    check_group,
+    get_terminal_width,
+    truncate_text,
+    wrap_text
+)
+
+def cmd_create(args):
+    def cleanup(signum, frame):
+        print("\nInterrupted. Cleaning up...")
+        if 'venv_path' in locals() and os.path.exists(venv_path):
+            subprocess.run(["rm", "-rf", venv_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        sys.exit(1)
+    
+    signal.signal(signal.SIGINT, cleanup)
+    
+    venv_name = args.name
+    description = args.description
+    group = args.group
+    toolchain = args.toolchain
+    user_python_version = args.python
+
+    if(user_python_version == "-1" and toolchain == ""):
+        eb_root_python = os.environ.get('EBROOTPYTHON')
+        if not eb_root_python:
+            print("Error: EBROOTPYTHON is not set. Please load a Python module with the 'ml' command.")
+            print("Use the 'ml spider' command to see all available versions and how to load a specific version:")
+            print("$ ml spider Python")
+            print("$ ml spider Python/3.x.x")
+            sys.exit(1)
+
+        python_version_match = re.search(r"Python/(\d+\.\d+\.\d+)", eb_root_python)
+        gcccore_version_match = re.search(r"GCCcore-(\d+\.\d+\.\d+)", eb_root_python)
+
+        python_version = f"Python/{python_version_match.group(1)}" if python_version_match else "Python/unknown"
+        gcccore_version = f"GCCcore/{gcccore_version_match.group(1)}" if gcccore_version_match else "GCCcore/unknown"
+    
+    elif(user_python_version != "-1"): 
+        _versions = get_py_versions()
+        versions = _versions[0]
+        python_version = f"Python/{user_python_version}"
+        if python_version in versions:
+            gcccore_version = versions[python_version]
+        else:
+            print(f"Error: Python version {python_version} not found in available toolchains.")
+            sys.exit(1)
+    
+    else:
+        _tc = get_py_versions()
+        py_versions = _tc[0]
+        tc_versions = _tc[1]
+        
+        if toolchain in tc_versions:
+            python_version = tc_versions[toolchain][1]
+            gcccore_version = tc_versions[toolchain][0]
+        else:
+            python_version = extract_python_version_from_toolchain(toolchain)
+            if python_version and python_version in py_versions:
+                gcccore_version = py_versions[python_version]
+            else:
+                python_version = "N/A"
+                gcccore_version = "N/A"
+
+    if not venv_name or not venv_name.isidentifier():
+        print("Error: Invalid virtual environment name. It must not contain spaces or special characters.")
+        sys.exit(1)
+
+    if group != "":
+        if check_group(group):
+            group_metaloc = get_group_metaloc()
+            venv_path = os.path.join(group_metaloc, group, 'virtual_envs', venv_name)
+            metadata_file = os.path.join(group_metaloc, group, 'virtual_envs', 'metadata.json')
+            log_file = os.path.join(group_metaloc, group, 'virtual_envs', 'creation.log')
+        else:
+            print(f"Error: User not in group '{group}'.")
+            sys.exit(1)
+    else:
+        user_metaloc = get_user_metaloc()
+        venv_path = os.path.join(user_metaloc, 'virtual_envs', venv_name)
+        metadata_file = os.path.join(user_metaloc, 'virtual_envs', 'metadata.json')
+        log_file = os.path.join(user_metaloc, 'virtual_envs', 'creation.log')
+
+    if os.path.exists(metadata_file):
+        with open(metadata_file, 'r') as f:
+            try:
+                metadata = json.load(f)
+                for env in metadata.get("environments", []):
+                    if env["name"] == venv_name:
+                        print("Error: venv already exists")
+                        sys.exit(1)
+            except json.JSONDecodeError:
+                metadata = {"environments": []}
+                with open(metadata_file, 'w') as f2:
+                    json.dump(metadata, f2, indent=4)
+
+    if os.path.exists(venv_path):
+        print("Error: venv already exists")
+        sys.exit(1)
+
+    print(f"Creating virtual environment '{venv_name}' in your metadata directory. This may take a minute.")
+    creation_command = ""
+    if (user_python_version == "-1" and toolchain == ""):
+        creation_command = f"python3 -m venv --system-site-packages {venv_path}"
+    elif (user_python_version != "-1"):
+        creation_command = f"source /etc/profile && module load {gcccore_version} {python_version} && python3 -m venv --system-site-packages {venv_path}"
+    else:
+        creation_command = f"source /etc/profile && module load {toolchain} && python3 -m venv --system-site-packages {venv_path}"
+    result = subprocess.run(creation_command, shell=True, executable='/bin/bash', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Error: Failed to create virtual environment.")
+        if result.stderr:
+            print(result.stderr.decode('utf-8', errors='replace'))
+        sys.exit(1)
+
+    activate_script = os.path.join(venv_path, 'bin', 'activate')
+    activate_command = ""
+    if (user_python_version == "-1" and toolchain == ""):
+        activate_command = f"source {activate_script}"
+    elif (user_python_version != "-1"):
+        activate_command = f"source /etc/profile && module load {gcccore_version} {python_version} && source {activate_script}"
+    else:
+        activate_command = f"source /etc/profile && module load {toolchain} && source {activate_script}"      
+    pip_result = subprocess.run([f"{activate_command} && pip install --upgrade pip"], shell=True, executable='/bin/bash', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if pip_result.returncode != 0:
+        print(f"Error: Failed to upgrade pip in virtual environment.")
+        if pip_result.stderr:
+            print(pip_result.stderr.decode('utf-8', errors='replace'))
+        print(f"Cleaning up failed environment...")
+        subprocess.run(["rm", "-rf", venv_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        sys.exit(1)
+
+    if os.path.exists(metadata_file):
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+    else:
+        metadata = {"environments": []}
+
+    metadata["environments"].append({
+        "name": venv_name,
+        "python_version": python_version,
+        "GCCcore_version": gcccore_version,
+        "description": description,
+        "toolchain": toolchain,
+        "group": group,
+        "owner": get_user()
+    })
+
+    with open(metadata_file, 'w') as f:
+        json.dump(metadata, f, indent=4)
+    
+    logfilePath = os.path.join('<LOGDIR>/venv.log')
+
+    try:
+        logfile = open(logfilePath,'a')
+        username = getpass.getuser()
+        today = datetime.date.today()
+        logString = f"{today} {username} create_venv {venv_name}\n"
+        logfile.write(logString)
+    except Exception as e:
+        print(f"Error: {e}")
+        print("This action was not logged")
+        sys.exit(1)
+
+    print("\n")
+    print(f"Virtual environment '{venv_name}' created successfully.")
+    print(f"To activate, use: source modulair activate {venv_name}")
+    print("To list environments, use: modulair list")
+    print("")
+    print("If you want to use this environment for Jupyter, run:")
+    print("  pip install jupyter")
+    print("after activating\n")
+
+
+def print_environments_table(metadata, group_name="your $SCRATCH"):
+    if len(metadata.get('environments', [])) == 0:
+        print(f"\nYou have no environments in {group_name} currently available through 'source modulair activate'\n")
+        return
+
+    envs = metadata.get('environments', [])
+    try:
+        terminal_width = get_terminal_width()
+    except:
+        terminal_width = 80
+
+    if terminal_width < 120:
+        print(f"\nThese are your virtual environments in {group_name} currently available through 'source modulair activate':\n")
+        for i, env in enumerate(envs, 1):
+            name = env.get('name', 'N/A')
+            description = env.get('description', 'N/A')
+            python_ver = env.get('python_version', 'N/A')
+            gcc_ver = env.get('GCCcore_version', 'N/A')
+            toolchain = env.get('toolchain', 'N/A')
+            owner = env.get('owner', 'N/A')
+
+            print(f"{i:2d}. {name}")
+            if description != 'N/A' and description.strip():
+                desc_lines = wrap_text(description, terminal_width - 8)
+                for line in desc_lines:
+                    print(f"    {line}")
+            print(f"    Python: {python_ver}  |  GCC: {gcc_ver}")
+            if toolchain != 'N/A' and toolchain.strip():
+                print(f"    Toolchain: {toolchain}")
+            if owner != 'N/A' and owner.strip():
+                print(f"    Owner: {owner}")
+            if i < len(envs):
+                print()
+    else:
+        print(f"\nThese are your virtual environments in {group_name} currently available through 'source modulair activate':\n")
+
+        available_width = terminal_width - 8
+        base_widths = [15, 25, 15, 15, 20, 15]
+        total_base = sum(base_widths)
+
+        if available_width > total_base:
+            extra = available_width - total_base
+            col_widths = base_widths.copy()
+            col_widths[1] += extra // 2
+            col_widths[4] += extra - (extra // 2)
+        else:
+            ratio = available_width / total_base
+            col_widths = [max(8, int(w * ratio)) for w in base_widths]
+
+        headers = ["Name", "Description", "Python Version", "GCC Version", "Toolchain", "Owner"]
+
+        header_row = ""
+        for i, header in enumerate(headers):
+            header_row += f"{header:<{col_widths[i]}}"
+        print(header_row)
+        print("-" * sum(col_widths))
+
+        for env in envs:
+            row_data = [
+                env.get('name', 'N/A'),
+                env.get('description', 'N/A'),
+                env.get('python_version', 'N/A'),
+                env.get('GCCcore_version', 'N/A'),
+                env.get('toolchain', 'N/A'),
+                env.get('owner', 'N/A')
+            ]
+
+            wrapped_columns = []
+            max_lines = 1
+
+            for i, text in enumerate(row_data):
+                if text and text != 'N/A' and len(text) > col_widths[i] - 1:
+                    wrapped = wrap_text(text, col_widths[i] - 1)
+                    wrapped_columns.append(wrapped)
+                    max_lines = max(max_lines, len(wrapped))
+                else:
+                    wrapped_columns.append([text])
+
+            for line_num in range(max_lines):
+                line = ""
+                for col_num, wrapped_col in enumerate(wrapped_columns):
+                    text = wrapped_col[line_num] if line_num < len(wrapped_col) else ""
+                    line += f"{text:<{col_widths[col_num]}}"
+                print(line.rstrip())
+
+def cmd_list(args):
+    if args.user:
+        try:
+            metadata = load_user_metadata()
+            if args.names_only:
+                for env in metadata.get('environments', []):
+                    print(env.get('name', 'N/A'))
+            else:
+                print(json.dumps(metadata, indent=4))
+        except Exception as e:
+            print(f"Error loading user metadata: {e}")
+            sys.exit(1)
+        return
+
+    if args.groups:
+        try:
+            all_metadata = load_all_metadata()
+            for group_name, group_metadata in all_metadata['groups'].items():
+                if args.names_only:
+                    for env in group_metadata.get('environments', []):
+                        print(env.get('name', 'N/A'))
+                else:
+                    print(json.dumps(group_metadata, indent=4))
+        except Exception as e:
+            print(f"Error loading group metadata: {e}")
+            sys.exit(1)
+        return
+
+    if args.all:
+        try:
+            all_metadata = load_all_metadata()
+            if args.names_only:
+                user_envs = all_metadata['user'].get('environments', [])
+                group_envs = []
+                for group_metadata in all_metadata['groups'].values():
+                    group_envs.extend(group_metadata.get('environments', []))
+                all_envs = user_envs + group_envs
+                for env in all_envs:
+                    print(env.get('name', 'N/A'))
+            else:
+                print(json.dumps(all_metadata, indent=4))
+        except Exception as e:
+            print(f"Error loading environment metadata: {e}")
+            sys.exit(1)
+        return
+
+    try:
+        all_metadata = load_all_metadata()
+
+        user_envs = all_metadata['user'].get('environments', [])
+        groups = all_metadata.get('groups', {})
+
+        for group_name, group_metadata in groups.items():
+            print_environments_table(group_metadata, f"group '{group_name}'")
+
+        print_environments_table(all_metadata['user'], "your $SCRATCH")
+
+        example_env = None
+        if user_envs:
+            example_env = user_envs[0].get('name')
+        else:
+            for group_metadata in groups.values():
+                envs = group_metadata.get('environments', [])
+                if envs:
+                    example_env = envs[0].get('name')
+                    break
+        if example_env:
+            print(f"\nFor example, to activate '{example_env}', run:")
+            print(f"  source modulair activate {example_env}\n")
+    except Exception as e:
+        print(f"Error loading environment metadata: {e}")
+        sys.exit(1)
+
+    if not args.no_log:
+        logfilePath = os.path.join('<LOGDIR>/venv.log')
+        try:
+            with open(logfilePath, 'a') as logfile:
+                username = getpass.getuser()
+                today = datetime.date.today()
+                logString = f"{today} {username} list_venv NA\n"
+                logfile.write(logString)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            pass
+
+def cmd_activate(args):
+    env_name = args.name
+    eval_mode = args.eval
+    
+    source_type, source_name, env_dict = find_environment_by_name(env_name)
+
+    if source_type is None:
+        print(f"Error: '{env_name}' does not exist in your current environment list.")
+        print("Use 'modulair list' to see all available environments.")
+        sys.exit(1)
+
+    env_path = get_environment_path(env_name, source_type, source_name)
+    python_version = env_dict.get('python_version', '')
+    gcccore_version = env_dict.get('GCCcore_version', '')
+    toolchain = env_dict.get('toolchain', '')
+
+    activation_commands = []
+
+    if toolchain and toolchain != 'N/A':
+        activation_commands.append(f"module load {toolchain}")
+    elif python_version != 'N/A' and gcccore_version != 'N/A':
+        activation_commands.append(f"module load {gcccore_version} {python_version}")
+
+    activation_commands.append(f"source {env_path}/bin/activate")
+
+    full_command = " && ".join(activation_commands)
+    
+    if eval_mode:
+        print(full_command)
+    else:
+        print(f"To activate '{env_name}', run:")
+        print(f"  source modulair activate {env_name}")
+
+    logfilePath = os.path.join('<LOGDIR>/venv.log')
+    try:
+        with open(logfilePath, 'a') as logfile:
+            username = getpass.getuser()
+            today = datetime.date.today()
+            logString = f"{today} {username} activate_venv {env_name}\n"
+            logfile.write(logString)
+    except Exception as e:
+        pass
+
+def cmd_delete(args):
+    env_name = args.name
+    skip_confirmation = args.yes
+    
+    source_type, source_name, env_dict = find_environment_by_name(env_name)
+
+    if source_type is None:
+        print(f"Error: '{env_name}' does not exist in your current environment list.")
+        print("Use 'modulair list' to see all available environments.")
+        sys.exit(1)
+
+    try:
+        env_path = get_environment_path(env_name, source_type, source_name)
+    except Exception as e:
+        print(f"Error determining environment path: {e}")
+        sys.exit(1)
+
+    location_desc = f"your $SCRATCH" if source_type == 'user' else f"group '{source_name}'"
+    print(f"Found environment '{env_name}' in {location_desc}")
+
+    print(f"\nEnvironment details:")
+    print(f"  Name: {env_dict.get('name', 'N/A')}")
+    print(f"  Description: {env_dict.get('description', 'N/A')}")
+    print(f"  Python Version: {env_dict.get('python_version', 'N/A')}")
+    print(f"  Location: {location_desc}")
+    if source_type == 'group':
+        print(f"  Owner: {env_dict.get('owner', 'N/A')}")
+    print(f"  Path: {env_path}")
+
+    if not skip_confirmation:
+        response = input(f"\nAre you sure you want to delete '{env_name}'? [y/N]: ").strip().lower()
+        if response not in ['y', 'yes']:
+            print("Deletion cancelled.")
+            sys.exit(0)
+
+    print(f"Removing '{env_name}' from metadata...")
+    success, _, _, removed_env = remove_environment_from_metadata(env_name)
+
+    if not success:
+        print(f"Error: Failed to remove '{env_name}' from metadata.")
+        sys.exit(1)
+
+    print(f"Removing {removed_env}'s files...")
+    try:
+        if not os.path.exists(env_path):
+            print(f"Warning: Environment directory '{env_path}' does not exist.")
+            print(f"Metadata for '{env_name}' has been removed.")
+        else:
+            echo_proc = subprocess.Popen(["echo", "y"], stdout=subprocess.PIPE)
+            rm_proc = subprocess.Popen(["rm", "-rf", env_path], stdin=echo_proc.stdout,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            echo_proc.stdout.close()
+            output, error = rm_proc.communicate()
+
+            if rm_proc.returncode != 0:
+                print(f"Error removing environment files: {error.decode('utf-8')}")
+                sys.exit(1)
+
+            if output:
+                print(output.decode('utf-8'))
+
+        print(f"Successfully removed '{env_name}' from {location_desc}")
+
+    except Exception as e:
+        print(f"Error removing environment files: {e}")
+        sys.exit(1)
+
+    logfilePath = os.path.join('<LOGDIR>/venv.log')
+    try:
+        with open(logfilePath, 'a') as logfile:
+            username = getpass.getuser()
+            today = datetime.date.today()
+            logString = f"{today} {username} delete_venv {env_name}\n"
+            logfile.write(logString)
+    except Exception as e:
+        pass
+
+def cmd_deactivate(args):
+    print("To deactivate, run:")
+    print("  source modulair deactivate")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog='modulair',
+        description='ModuLair - Modular Python Virtual Environment Manager'
+    )
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    create_parser = subparsers.add_parser('create', help='Create a new virtual environment')
+    create_parser.add_argument('name', help='Name of the virtual environment (no spaces or special characters)')
+    create_parser.add_argument('-d', '--description', help='Optional description of the environment', default='')
+    create_parser.add_argument('-g', '--group', help='Optional name of the group for shared environment', default='')
+    create_parser.add_argument('-t', '--toolchain', help='Space-separated list of modules to load during creation', default='')
+    create_parser.add_argument('-p', '--python', help='Specify the Python version', default='-1')
+    create_parser.set_defaults(func=cmd_create)
+    
+    list_parser = subparsers.add_parser('list', help='List virtual environments')
+    list_parser.add_argument('-u', '--user', action='store_true', help="List user's $SCRATCH environments in JSON format")
+    list_parser.add_argument('-g', '--groups', action='store_true', help="List user's group environments in JSON format (all groups)")
+    list_parser.add_argument('-a', '--all', action='store_true', help="List all user's environments in JSON format (user + groups)")
+    list_parser.add_argument('-n', '--names-only', action='store_true', help='List environment names only')
+    list_parser.add_argument('--no-log', action='store_true', help='Disable logging for this run')
+    list_parser.set_defaults(func=cmd_list)
+    
+    activate_parser = subparsers.add_parser('activate', help='Generate activation commands for an environment')
+    activate_parser.add_argument('name', help='Name of the environment to activate')
+    activate_parser.add_argument('-e', '--eval', action='store_true', help='Output commands suitable for eval (no comments)')
+    activate_parser.set_defaults(func=cmd_activate)
+    
+    delete_parser = subparsers.add_parser('delete', help='Delete a virtual environment')
+    delete_parser.add_argument('name', help='The name of the environment you wish to delete')
+    delete_parser.add_argument('-y', '--yes', action='store_true', help='Skip confirmation prompt')
+    delete_parser.set_defaults(func=cmd_delete)
+    
+    deactivate_parser = subparsers.add_parser('deactivate', help='Deactivate environment and purge modules')
+    deactivate_parser.set_defaults(func=cmd_deactivate)
+    
+    args = parser.parse_args()
+    
+    if args.command is None:
+        parser.print_help()
+        sys.exit(0)
+    
+    args.func(args)
+
+if __name__ == "__main__":
+    main()
