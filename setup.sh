@@ -162,7 +162,7 @@ case "$1" in
         echo "$today $USER activate_venv $2" >> <LOGDIR>/venv.log
         
         echo ""
-        echo "When deactivating, run: source modulair deactivate"
+        echo "When deactivating, run: modulair deactivate"
         ;;
     deactivate)
         echo "Running deactivate..."
