@@ -133,7 +133,7 @@ mv add_venv bin/
 mv modulair_cli.py bin/
 
 # Create shell wrapper for modulair that handles source'd activate
-cat > modulair << 'WRAPPER'
+cat > modulair-cli << 'WRAPPER'
 #!/bin/bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -171,24 +171,22 @@ case "$1" in
         ml purge
         ;;
     *)
-        echo "Usage: source modulair <command> [args]"
+        echo "Usage: modulair <command> [args]"
         echo ""
         echo "Commands:"
-        echo "  source modulair activate <name>  - Activate a virtual environment"
-        echo "  source modulair deactivate      - Deactivate and purge modules"
-        echo ""
-        echo "Or run without 'source' for other commands:"
         echo "  modulair --help"
         echo "  modulair create <name> ..."
-        echo "  modulair list"
+        echo "  modulair list - list created modulair venv"
+        echo "  modulair activate <name>  - Activate a virtual environment"
+        echo "  modulair deactivate      - Deactivate and purge modules"
         echo "  modulair delete <name>"
         ;;
 esac
 WRAPPER
 
-sed -i "s|<LOGDIR>|${default_logdir}|g" modulair
-chmod +x modulair
-mv modulair bin/
+sed -i "s|<LOGDIR>|${default_logdir}|g" modulair-cli
+chmod +x modulair-cli
+mv modulair-cli bin/
 
 # Setup log directory and file
 echo "Setting up logging..."
@@ -203,6 +201,9 @@ echo "  User metadata location: $metadataloc"
 echo "  Group metadata location: $groupmetaloc"
 echo "  Binary directory: $default_bindir"
 echo "  Log directory: $default_logdir"
+echo ""
+echo "Need to set up a module for ModuLair with wrapper function"
+echo "in order to take care of source vs non-source cases." 
 echo
 echo "To use ModuLair, add the following to your PATH:"
 echo "  export PATH=\"${default_bindir}:\$PATH\""
@@ -215,6 +216,7 @@ echo "  modulair create --help"
 echo "  modulair create <name> [-d description] [-g group] [-t toolchain] [-p python]"
 echo "  modulair list [-u|-g|-a] [-n]"
 echo "  modulair activate <name>"
+echo "  modulair deactivate"
 echo "  modulair delete <name> [-y]"
 echo
 echo "Examples:"
@@ -222,10 +224,6 @@ echo "  modulair create myenv"
 echo "  modulair create myenv -d 'My environment' -g mygroup"
 echo "  modulair list"
 echo "  modulair activate myenv"
+echo "  modulair deactivate"
 echo ""
-echo "To activate an environment:"
-echo "  source modulair activate myenv"
-echo
-echo "To deactivate an environment:"
-echo "  source modulair deactivate"
 echo
