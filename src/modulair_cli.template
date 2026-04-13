@@ -189,7 +189,8 @@ def cmd_create(args):
 
     print("\n")
     print(f"Virtual environment '{venv_name}' created successfully.")
-    print(f"To activate, run: modulair activate {venv_name}")
+    print(f"To activate, run: source modulair activate {venv_name}")
+    print(f"Note: if you loaded ModuLair module, run without the source command: modulair activate {venv_name}")
     print("To list environments, use: modulair list")
     print("")
     print("If you want to use this environment for Jupyter, run:")
@@ -199,7 +200,7 @@ def cmd_create(args):
 
 def print_environments_table(metadata, group_name="your $SCRATCH"):
     if len(metadata.get('environments', [])) == 0:
-        print(f"\nYou have no environments in {group_name} currently available through 'modulair activate'\n")
+        print(f"\nYou have no environments in {group_name} currently available through 'source modulair activate'\n")
         return
 
     envs = metadata.get('environments', [])
@@ -209,7 +210,7 @@ def print_environments_table(metadata, group_name="your $SCRATCH"):
         terminal_width = 80
 
     if terminal_width < 120:
-        print(f"\nThese are your virtual environments in {group_name} currently available through 'modulair activate':\n")
+        print(f"\nThese are your virtual environments in {group_name} currently available through 'source modulair activate':\n")
         for i, env in enumerate(envs, 1):
             name = env.get('name', 'N/A')
             description = env.get('description', 'N/A')
@@ -231,7 +232,7 @@ def print_environments_table(metadata, group_name="your $SCRATCH"):
             if i < len(envs):
                 print()
     else:
-        print(f"\nThese are your virtual environments in {group_name} currently available through 'modulair activate':\n")
+        print(f"\nThese are your virtual environments in {group_name} currently available through 'source modulair activate':\n")
 
         available_width = terminal_width - 8
         base_widths = [15, 25, 15, 15, 20, 15]
@@ -350,6 +351,8 @@ def cmd_list(args):
                     break
         if example_env:
             print(f"\nFor example, to activate '{example_env}', run:")
+            print(f"  source modulair activate {example_env}\n")
+            print(f"\nIf you loaded ModuLair module, to activate '{example_env}', run without source command:")
             print(f"  modulair activate {example_env}\n")
     except Exception as e:
         print(f"Error loading environment metadata: {e}")
@@ -399,6 +402,8 @@ def cmd_activate(args):
         print(full_command)
     else:
         print(f"To activate '{env_name}', run:")
+        print(f"  source modulair activate {env_name}")
+        print(f"If you loaded ModuLair module, to activate '{env_name}', run without source command:")
         print(f"  modulair activate {env_name}")
 
     logfilePath = os.path.join('<LOGDIR>/venv.log')
@@ -490,6 +495,8 @@ def cmd_delete(args):
 
 def cmd_deactivate(args):
     print("To deactivate, run:")
+    print("  source modulair deactivate")
+    print("If you loaded ModuLair module, to deactivate, run without source command:")
     print("  modulair deactivate")
 
 
