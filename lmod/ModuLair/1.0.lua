@@ -24,10 +24,10 @@ local bashStr = [[
 \local cmd="${1-__missing__}"
 case "$cmd" in
     activate|deactivate)
-        source modulair-cli "$@"
+        source /sw/hprc/sw/dor-hprc-venv-manager/bin/modulair "$@"
         ;;
     *)
-        modulair-cli "$@"
+        /sw/hprc/sw/dor-hprc-venv-manager/bin/modulair "$@"
         ;;
 esac
 ]]
