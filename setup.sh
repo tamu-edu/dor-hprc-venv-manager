@@ -133,7 +133,7 @@ mv add_venv bin/
 mv modulair_cli.py bin/
 
 # Create shell wrapper for modulair that handles source'd activate
-cat > modulair-cli << 'WRAPPER'
+cat > modulair << 'WRAPPER'
 #!/bin/bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -177,16 +177,16 @@ case "$1" in
         echo "  modulair --help"
         echo "  modulair create <name> ..."
         echo "  modulair list - list created modulair venv"
-        echo "  modulair activate <name>  - Activate a virtual environment"
-        echo "  modulair deactivate      - Deactivate and purge modules"
+        echo "  source modulair activate <name>  - Activate a virtual environment"
+        echo "  source modulair deactivate      - Deactivate and purge modules"
         echo "  modulair delete <name>"
         ;;
 esac
 WRAPPER
 
-sed -i "s|<LOGDIR>|${default_logdir}|g" modulair-cli
-chmod +x modulair-cli
-mv modulair-cli bin/
+sed -i "s|<LOGDIR>|${default_logdir}|g" modulair
+chmod +x modulair
+mv modulair bin/
 
 # Setup log directory and file
 echo "Setting up logging..."
@@ -215,15 +215,19 @@ echo "  modulair --help"
 echo "  modulair create --help"
 echo "  modulair create <name> [-d description] [-g group] [-t toolchain] [-p python]"
 echo "  modulair list [-u|-g|-a] [-n]"
-echo "  modulair activate <name>"
-echo "  modulair deactivate"
+echo "  source modulair activate <name>"
+echo "or: modulair activate <name> (if you loaded ModuLair module)"
+echo "  source modulair deactivate"
+echo "or: modulair deactivate (if you loaded ModuLair module)"
 echo "  modulair delete <name> [-y]"
 echo
 echo "Examples:"
 echo "  modulair create myenv"
 echo "  modulair create myenv -d 'My environment' -g mygroup"
 echo "  modulair list"
-echo "  modulair activate myenv"
-echo "  modulair deactivate"
+echo "  source modulair activate myenv"
+echo "or: modulair activate myenv (if you loaded ModuLair module)"
+echo "  source modulair deactivate"
+echo "or: modulair deactivate (if you loaded ModuLair module)"
 echo ""
 echo
