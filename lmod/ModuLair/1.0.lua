@@ -39,10 +39,10 @@ set_shell_function("modulair",bashStr,cshStr)
 if (mode() == "load") then
     if os.getenv("SLURM_NODELIST") then
     else
-        io.stdout:write('You can now activate/deactivate a ModuLair venv without the "source" command.\n')
-        io.stdout:write('E.g. to activate "myenv" ModuLair venv, just type:\n')
-        io.stdout:write('modulair activate myenv\n')
-        io.stdout:write('And to deactivate, just type:\n')
-        io.stdout:write('modulair deactivate\n')
+        io.stderr:write("You can now activate/deactivate a ModuLair venv without the \"source\" command.\n\n")
+        io.stderr:write("E.g. to activate 'myenv' ModuLair venv, just type:\n")
+        io.stderr:write("modulair activate myenv\n\n")
+        io.stderr:write("And to deactivate, just type:\n")
+        io.stderr:write("modulair deactivate\n")
     end
 end
