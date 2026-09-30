@@ -14,9 +14,11 @@ from utils import (
     get_user,
     get_user_metaloc,
     get_group_metaloc,
+    get_system_metaloc,
     get_user_groups,
     load_user_metadata,
     load_group_metadata,
+    load_system_metadata,
     load_all_metadata,
     find_environment_by_name,
     get_environment_path,
@@ -28,7 +30,8 @@ from utils import (
     check_group,
     get_terminal_width,
     truncate_text,
-    wrap_text
+    wrap_text,
+    SYSTEM_ADMIN_GROUP
 )
 
 def cmd_create(args):
@@ -43,8 +46,13 @@ def cmd_create(args):
     venv_name = args.name
     description = args.description
     group = args.group
+    system_flag = args.system
     toolchain = args.toolchain
     user_python_version = args.python
+
+    if system_flag and group != "":
+        print("Error: --system and --group are mutually exclusive.")
+        sys.exit(1)
 
     if(user_python_version == "-1" and toolchain == ""):
         eb_root_python = os.environ.get('EBROOTPYTHON')
@@ -91,7 +99,15 @@ def cmd_create(args):
         print("Error: Invalid virtual environment name. It must not contain spaces or special characters.")
         sys.exit(1)
 
-    if group != "":
+    if system_flag:
+        if not check_group(SYSTEM_ADMIN_GROUP):
+            print("Error: You do not have permission to perform this action.")
+            sys.exit(1)
+        system_metaloc = get_system_metaloc()
+        venv_path = os.path.join(system_metaloc, venv_name)
+        metadata_file = os.path.join(system_metaloc, 'metadata.json')
+        log_file = os.path.join(system_metaloc, 'creation.log')
+    elif group != "":
         if check_group(group):
             group_metaloc = get_group_metaloc()
             venv_path = os.path.join(group_metaloc, group, 'virtual_envs', venv_name)
@@ -123,7 +139,12 @@ def cmd_create(args):
         print("Error: venv already exists")
         sys.exit(1)
 
-    print(f"Creating virtual environment '{venv_name}' in your metadata directory. This may take a minute.")
+    if system_flag:
+        print(f"Creating virtual environment '{venv_name}' in the system directory. This may take a minute.")
+    elif group != "":
+        print(f"Creating virtual environment '{venv_name}' in group '{group}' directory. This may take a minute.")
+    else:
+        print(f"Creating virtual environment '{venv_name}' in your metadata directory. This may take a minute.")
     creation_command = ""
     if (user_python_version == "-1" and toolchain == ""):
         creation_command = f"python3 -m venv --system-site-packages {venv_path}"
@@ -161,7 +182,7 @@ def cmd_create(args):
     else:
         metadata = {"environments": []}
 
-    metadata["environments"].append({
+    env_entry = {
         "name": venv_name,
         "python_version": python_version,
         "GCCcore_version": gcccore_version,
@@ -169,7 +190,10 @@ def cmd_create(args):
         "toolchain": toolchain,
         "group": group,
         "owner": get_user()
-    })
+    }
+    if system_flag:
+        env_entry["system"] = True
+    metadata["environments"].append(env_entry)
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, indent=4)
@@ -284,6 +308,19 @@ def print_environments_table(metadata, group_name="your $SCRATCH"):
                 print(line.rstrip())
 
 def cmd_list(args):
+    if args.system:
+        try:
+            metadata = load_system_metadata()
+            if args.names_only:
+                for env in metadata.get('environments', []):
+                    print(env.get('name', 'N/A'))
+            else:
+                print(json.dumps(metadata, indent=4))
+        except Exception as e:
+            print(f"Error loading system metadata: {e}")
+            sys.exit(1)
+        return
+
     if args.user:
         try:
             metadata = load_user_metadata()
@@ -319,7 +356,8 @@ def cmd_list(args):
                 group_envs = []
                 for group_metadata in all_metadata['groups'].values():
                     group_envs.extend(group_metadata.get('environments', []))
-                all_envs = user_envs + group_envs
+                system_envs = all_metadata['system'].get('environments', [])
+                all_envs = system_envs + user_envs + group_envs
                 for env in all_envs:
                     print(env.get('name', 'N/A'))
             else:
@@ -334,6 +372,10 @@ def cmd_list(args):
 
         user_envs = all_metadata['user'].get('environments', [])
         groups = all_metadata.get('groups', {})
+        system_metadata = all_metadata.get('system', {"environments": []})
+
+        if system_metadata.get('environments'):
+            print_environments_table(system_metadata, "system (hprc_envs)")
 
         for group_name, group_metadata in groups.items():
             print_environments_table(group_metadata, f"group '{group_name}'")
@@ -341,7 +383,9 @@ def cmd_list(args):
         print_environments_table(all_metadata['user'], "your $SCRATCH")
 
         example_env = None
-        if user_envs:
+        if system_metadata.get('environments'):
+            example_env = system_metadata['environments'][0].get('name')
+        elif user_envs:
             example_env = user_envs[0].get('name')
         else:
             for group_metadata in groups.values():
@@ -400,11 +444,23 @@ def cmd_activate(args):
     
     if eval_mode:
         print(full_command)
+        if source_type == 'system':
+            print(f"echo ''")
+            print(f"echo 'Note: This is a system-managed environment. It is read-only — you will not be able to install,'")
+            print(f"echo 'remove, or modify packages (e.g. pip install will fail). If you need a customizable'")
+            print(f"echo 'environment, create your own with: modulair create <name>'")
+            print(f"echo ''")
     else:
         print(f"To activate '{env_name}', run:")
         print(f"  source modulair activate {env_name}")
         print(f"If you loaded ModuLair module, to activate '{env_name}', run without source command:")
         print(f"  modulair activate {env_name}")
+        if source_type == 'system':
+            print()
+            print(f"Note: This is a system-managed environment. It is read-only — you will not be able to install,")
+            print(f"remove, or modify packages (e.g. pip install will fail). If you need a customizable")
+            print(f"environment, create your own with: modulair create <name>")
+            print()
 
     logfilePath = os.path.join('<LOGDIR>/venv.log')
     try:
@@ -433,7 +489,15 @@ def cmd_delete(args):
         print(f"Error determining environment path: {e}")
         sys.exit(1)
 
-    location_desc = f"your $SCRATCH" if source_type == 'user' else f"group '{source_name}'"
+    if source_type == 'system':
+        if not check_group(SYSTEM_ADMIN_GROUP):
+            print("Error: You do not have permission to perform this action.")
+            sys.exit(1)
+        location_desc = "system (hprc_envs)"
+    elif source_type == 'user':
+        location_desc = "your $SCRATCH"
+    else:
+        location_desc = f"group '{source_name}'"
     print(f"Found environment '{env_name}' in {location_desc}")
 
     print(f"\nEnvironment details:")
@@ -508,18 +572,23 @@ def main():
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
+    _is_admin = check_group(SYSTEM_ADMIN_GROUP)
+    _system_help = argparse.SUPPRESS if not _is_admin else None
+
     create_parser = subparsers.add_parser('create', help='Create a new virtual environment')
     create_parser.add_argument('name', help='Name of the virtual environment (no spaces or special characters)')
     create_parser.add_argument('-d', '--description', help='Optional description of the environment', default='')
     create_parser.add_argument('-g', '--group', help='Optional name of the group for shared environment', default='')
+    create_parser.add_argument('--system', action='store_true', help=_system_help or 'Create environment in system-wide location')
     create_parser.add_argument('-t', '--toolchain', help='Space-separated list of modules to load during creation', default='')
     create_parser.add_argument('-p', '--python', help='Specify the Python version', default='-1')
     create_parser.set_defaults(func=cmd_create)
-    
+
     list_parser = subparsers.add_parser('list', help='List virtual environments')
     list_parser.add_argument('-u', '--user', action='store_true', help="List user's $SCRATCH environments in JSON format")
     list_parser.add_argument('-g', '--groups', action='store_true', help="List user's group environments in JSON format (all groups)")
-    list_parser.add_argument('-a', '--all', action='store_true', help="List all user's environments in JSON format (user + groups)")
+    list_parser.add_argument('-a', '--all', action='store_true', help="List all environments in JSON format (system + user + groups)")
+    list_parser.add_argument('--system', action='store_true', help=_system_help or 'List only system-wide environments')
     list_parser.add_argument('-n', '--names-only', action='store_true', help='List environment names only')
     list_parser.add_argument('--no-log', action='store_true', help='Disable logging for this run')
     list_parser.set_defaults(func=cmd_list)

@@ -13,6 +13,10 @@ import subprocess
 import textwrap
 
 
+SYSTEM_ENV_DIR = "<SYSTEMENVDIR>"
+SYSTEM_ADMIN_GROUP = "<SYSTEMADMINGROUP>"
+
+
 def get_user():
     """Get the current username from the USER environment variable."""
     return os.environ.get('USER', 'unknown')
@@ -26,6 +30,11 @@ def get_user_metaloc():
 def get_group_metaloc():
     """Get the group metadata base location."""
     return os.path.expandvars("<GROUPMETDIR>")
+
+
+def get_system_metaloc():
+    """Get the system-wide hprc_envs location."""
+    return SYSTEM_ENV_DIR
 
 
 def get_user_groups():
@@ -49,6 +58,24 @@ def load_user_metadata():
         raise Exception(f"User metadata file is corrupted or not in JSON format: {e}")
     except Exception as e:
         raise Exception(f"Unexpected error reading user metadata: {e}")
+
+
+def load_system_metadata():
+    """Load metadata from the system-wide hprc_envs directory."""
+    metadata_path = os.path.join(SYSTEM_ENV_DIR, 'metadata.json')
+    try:
+        with open(metadata_path, 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {"environments": []}
+    except json.JSONDecodeError:
+        print("Warning: System metadata file is corrupted or not in JSON format")
+        return {"environments": []}
+    except PermissionError:
+        return {"environments": []}
+    except Exception as e:
+        print(f"Warning: Unexpected error reading system metadata: {e}")
+        return {"environments": []}
 
 
 def load_group_metadata(group_name):
@@ -91,16 +118,17 @@ def load_all_metadata():
     """
     all_metadata = {
         'user': load_user_metadata(),
-        'groups': {}
+        'groups': {},
+        'system': load_system_metadata()
     }
-    
+
     # Load metadata from all user groups
     groups = get_user_groups()
     for group in groups:
         group_metadata = load_group_metadata(group)
         if group_metadata.get('environments'):  # Only include groups with environments
             all_metadata['groups'][group] = group_metadata
-    
+
     return all_metadata
 
 
@@ -128,7 +156,12 @@ def find_environment_by_name(env_name):
         for env in group_metadata.get('environments', []):
             if env.get('name') == env_name:
                 return ('group', group_name, env)
-    
+
+    # Search in system environments
+    for env in all_metadata['system'].get('environments', []):
+        if env.get('name') == env_name:
+            return ('system', 'system', env)
+
     return (None, None, None)
 
 
@@ -150,6 +183,8 @@ def get_environment_path(env_name, source_type, source_name):
     elif source_type == 'group':
         group_metaloc = get_group_metaloc()
         return os.path.join(group_metaloc, source_name, 'virtual_envs', env_name)
+    elif source_type == 'system':
+        return os.path.join(SYSTEM_ENV_DIR, env_name)
     else:
         raise ValueError(f"Invalid source_type: {source_type}")
 
@@ -171,6 +206,8 @@ def get_metadata_file_path(source_type, source_name):
     elif source_type == 'group':
         group_metaloc = get_group_metaloc()
         return os.path.join(group_metaloc, source_name, 'virtual_envs', 'metadata.json')
+    elif source_type == 'system':
+        return os.path.join(SYSTEM_ENV_DIR, 'metadata.json')
     else:
         raise ValueError(f"Invalid source_type: {source_type}")
 
@@ -208,8 +245,10 @@ def remove_environment_from_metadata(env_name):
     # Load the appropriate metadata
     if source_type == 'user':
         metadata = load_user_metadata()
-    else:  # group
+    elif source_type == 'group':
         metadata = load_group_metadata(source_name)
+    else:  # system
+        metadata = load_system_metadata()
     
     # Remove the environment
     environments = metadata.get('environments', [])
