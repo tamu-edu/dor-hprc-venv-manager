@@ -15,6 +15,7 @@ from utils import (
     get_user_metaloc,
     get_group_metaloc,
     get_user_groups,
+    get_global_groups,
     load_user_metadata,
     load_group_metadata,
     load_all_metadata,
@@ -92,8 +93,14 @@ def cmd_create(args):
         sys.exit(1)
 
     if group != "":
-        if check_group(group):
+        # A configured global group is authorized by filesystem permissions;
+        # ordinary groups still require Unix group membership.
+        if check_group(group) or group in get_global_groups():
             group_metaloc = get_group_metaloc()
+            group_env_dir = os.path.join(group_metaloc, group, 'virtual_envs')
+            if not os.access(group_env_dir, os.W_OK | os.X_OK):
+                print(f"Error: You do not have permission to manage group '{group}'.")
+                sys.exit(1)
             venv_path = os.path.join(group_metaloc, group, 'virtual_envs', venv_name)
             metadata_file = os.path.join(group_metaloc, group, 'virtual_envs', 'metadata.json')
             log_file = os.path.join(group_metaloc, group, 'virtual_envs', 'creation.log')
@@ -123,7 +130,10 @@ def cmd_create(args):
         print("Error: venv already exists")
         sys.exit(1)
 
-    print(f"Creating virtual environment '{venv_name}' in your metadata directory. This may take a minute.")
+    if group != "":
+        print(f"Creating virtual environment '{venv_name}' in group '{group}' directory. This may take a minute.")
+    else:
+        print(f"Creating virtual environment '{venv_name}' in your metadata directory. This may take a minute.")
     creation_command = ""
     if (user_python_version == "-1" and toolchain == ""):
         creation_command = f"python3 -m venv --system-site-packages {venv_path}"
@@ -161,7 +171,7 @@ def cmd_create(args):
     else:
         metadata = {"environments": []}
 
-    metadata["environments"].append({
+    env_entry = {
         "name": venv_name,
         "python_version": python_version,
         "GCCcore_version": gcccore_version,
@@ -169,7 +179,8 @@ def cmd_create(args):
         "toolchain": toolchain,
         "group": group,
         "owner": get_user()
-    })
+    }
+    metadata["environments"].append(env_entry)
 
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, indent=4)
@@ -334,7 +345,6 @@ def cmd_list(args):
 
         user_envs = all_metadata['user'].get('environments', [])
         groups = all_metadata.get('groups', {})
-
         for group_name, group_metadata in groups.items():
             print_environments_table(group_metadata, f"group '{group_name}'")
 
@@ -433,7 +443,16 @@ def cmd_delete(args):
         print(f"Error determining environment path: {e}")
         sys.exit(1)
 
-    location_desc = f"your $SCRATCH" if source_type == 'user' else f"group '{source_name}'"
+    if source_type == 'group':
+        group_env_dir = os.path.dirname(get_metadata_file_path(source_type, source_name))
+        if not os.access(group_env_dir, os.W_OK | os.X_OK):
+            print(f"Error: You do not have permission to manage group '{source_name}'.")
+            sys.exit(1)
+
+    if source_type == 'user':
+        location_desc = "your $SCRATCH"
+    else:
+        location_desc = f"group '{source_name}'"
     print(f"Found environment '{env_name}' in {location_desc}")
 
     print(f"\nEnvironment details:")
@@ -515,11 +534,11 @@ def main():
     create_parser.add_argument('-t', '--toolchain', help='Space-separated list of modules to load during creation', default='')
     create_parser.add_argument('-p', '--python', help='Specify the Python version', default='-1')
     create_parser.set_defaults(func=cmd_create)
-    
+
     list_parser = subparsers.add_parser('list', help='List virtual environments')
     list_parser.add_argument('-u', '--user', action='store_true', help="List user's $SCRATCH environments in JSON format")
     list_parser.add_argument('-g', '--groups', action='store_true', help="List user's group environments in JSON format (all groups)")
-    list_parser.add_argument('-a', '--all', action='store_true', help="List all user's environments in JSON format (user + groups)")
+    list_parser.add_argument('-a', '--all', action='store_true', help="List all environments in JSON format (user + groups)")
     list_parser.add_argument('-n', '--names-only', action='store_true', help='List environment names only')
     list_parser.add_argument('--no-log', action='store_true', help='Disable logging for this run')
     list_parser.set_defaults(func=cmd_list)

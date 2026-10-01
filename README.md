@@ -255,6 +255,44 @@ modulair create -g my_group my_env
 * Accessible to all group members
 * Works with `-p` or `-t`
 
+### Globally Visible Group Environments
+
+Global environments use the same group layout and commands as ordinary group
+environments. Installation creates `bin/global_groups.json` from
+`global_groups.json.example`. This is the only configuration file
+administrators edit to add or remove global group names:
+
+```json
+{
+  "groups": ["global_envs"]
+}
+```
+
+ModuLair appends these names to each user's Unix groups when searching group
+metadata. This makes environments in `/scratch/group/global_envs` visible in
+`modulair list` and available through `modulair activate`, without making every
+user a member of the Linux `global_envs` group.
+
+Administrators create or delete environments using the normal command; their
+authority comes from the directory's filesystem permissions:
+
+```bash
+modulair create -g global_envs shortcourse_env
+```
+
+Configure filesystem permissions separately from discovery. The global
+environment directory must be owned by the administrator group, writable by
+that group, and readable/traversable by everyone:
+
+```bash
+chown <admin-owner>:<admin-group> /scratch/group/global_envs
+chmod 2775 /scratch/group/global_envs
+```
+
+Mode `2775` is `drwxrwsr-x`: administrators can manage content, everyone else can read
+metadata and activate environments, and the setgid bit keeps new content in the
+administrator group.
+
 ---
 
 ## Key Features

@@ -13,6 +13,9 @@ import subprocess
 import textwrap
 
 
+GLOBAL_GROUPS_FILE = "<GLOBALGROUPSFILE>"
+
+
 def get_user():
     """Get the current username from the USER environment variable."""
     return os.environ.get('USER', 'unknown')
@@ -29,10 +32,31 @@ def get_group_metaloc():
 
 
 def get_user_groups():
-    """Get all groups the current user belongs to."""
+    """Return Unix groups plus globally visible group environments."""
     groups_cmd_out = subprocess.run(["groups"], stdout=subprocess.PIPE)
-    group_list = groups_cmd_out.stdout.decode().strip().split()
-    return group_list
+    unix_groups = groups_cmd_out.stdout.decode().strip().split()
+    return list(dict.fromkeys(unix_groups + get_global_groups()))
+
+
+def get_global_groups():
+    """Load configured group names that should be visible to every user."""
+    try:
+        with open(GLOBAL_GROUPS_FILE, 'r') as file:
+            configured_groups = json.load(file).get('groups', [])
+    except FileNotFoundError:
+        return []
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Warning: Unable to read global groups configuration: {e}")
+        return []
+
+    if not isinstance(configured_groups, list):
+        print("Warning: Global groups configuration must contain a 'groups' list")
+        return []
+
+    # Group names become path components, so reject unsafe configuration entries.
+    return [group for group in configured_groups
+            if isinstance(group, str) and group not in ('', '.', '..')
+            and os.path.basename(group) == group]
 
 
 def load_user_metadata():
@@ -76,7 +100,7 @@ def load_group_metadata(group_name):
 
 def load_all_metadata():
     """
-    Load metadata from all accessible sources (user + all groups).
+    Load metadata from all accessible sources (user + Unix and global groups).
     
     Returns:
         dict: A dictionary with structure:
@@ -93,14 +117,14 @@ def load_all_metadata():
         'user': load_user_metadata(),
         'groups': {}
     }
-    
-    # Load metadata from all user groups
+
+    # Global groups are included by get_user_groups without granting write access.
     groups = get_user_groups()
     for group in groups:
         group_metadata = load_group_metadata(group)
         if group_metadata.get('environments'):  # Only include groups with environments
             all_metadata['groups'][group] = group_metadata
-    
+
     return all_metadata
 
 
@@ -128,7 +152,7 @@ def find_environment_by_name(env_name):
         for env in group_metadata.get('environments', []):
             if env.get('name') == env_name:
                 return ('group', group_name, env)
-    
+
     return (None, None, None)
 
 

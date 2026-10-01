@@ -28,6 +28,7 @@ fi
 
 metadataloc="$MODULAIR_METADATA_DIR"
 groupmetaloc="$MODULAIR_GROUP_METADATA_DIR"
+globalgroupsfile="${default_bindir}/global_groups.json"
 
 echo "Setting up ModuLair with the following configuration:"
 echo "  Root directory: $rootdir"
@@ -35,6 +36,7 @@ echo "  Binary directory: $default_bindir"
 echo "  Log directory: $default_logdir"
 echo "  User metadata location: $metadataloc"
 echo "  Group metadata location: $groupmetaloc"
+echo "  Global groups configuration: $globalgroupsfile"
 echo
 
 # Create necessary directories
@@ -84,10 +86,12 @@ if [ -f "src/utils.py.template" ]; then
     cp src/utils.py.template utils.py
     sed -i "s|<METDIR>|${metadataloc}|g" utils.py
     sed -i "s|<GROUPMETDIR>|${groupmetaloc}|g" utils.py
+    sed -i "s|<GLOBALGROUPSFILE>|${globalgroupsfile}|g" utils.py
 elif [ -f "src/utils.py" ]; then
     cp src/utils.py utils.py
     sed -i "s|<METDIR>|${metadataloc}|g" utils.py
     sed -i "s|<GROUPMETDIR>|${groupmetaloc}|g" utils.py
+    sed -i "s|<GLOBALGROUPSFILE>|${globalgroupsfile}|g" utils.py
 else
     echo "Error: Neither utils.py.template nor utils.py found in src/"
     exit 1
@@ -131,6 +135,11 @@ mv utils.py bin/
 mv json_to_command bin/
 mv add_venv bin/
 mv modulair_cli.py bin/
+
+# Preserve an administrator-edited configuration on subsequent installations.
+if [ ! -f "${globalgroupsfile}" ]; then
+    cp global_groups.json.example "${globalgroupsfile}"
+fi
 
 # Create shell wrapper for modulair that handles source'd activate
 cat > modulair << 'WRAPPER'
@@ -202,6 +211,7 @@ echo
 echo "Configuration used:"
 echo "  User metadata location: $metadataloc"
 echo "  Group metadata location: $groupmetaloc"
+echo "  Global groups configuration: $globalgroupsfile"
 echo "  Binary directory: $default_bindir"
 echo "  Log directory: $default_logdir"
 echo ""

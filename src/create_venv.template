@@ -11,7 +11,7 @@ import datetime
 import shutil
 
 # Import centralized utilities
-from utils import get_user, get_user_metaloc, get_group_metaloc
+from utils import get_user, get_user_metaloc, get_group_metaloc, get_global_groups, check_group
 
 def get_py_versions():
     captureCommand = "toolchains | grep Python > captured-output.txt"
@@ -38,20 +38,6 @@ def extract_python_version_from_toolchain(toolchain):
     if match:
         return f"Python/{match.group(1)}"
     return None
-
-def check_group(group):
-    user = get_user()
-    check_command = f"groups {user} | grep {group} > check.txt"
-    removeCommand = "rm check.txt"
-
-    subprocess.run(check_command, shell=True, executable='/bin/bash')
-    with open("check.txt", "r") as file:
-        first_char = file.read(1)
-        if not first_char:
-            subprocess.run(removeCommand, shell=True, executable='/bin/bash')
-            return False
-    subprocess.run(removeCommand, shell=True, executable='/bin/bash')
-    return True
 
 def create_virtualenv(venv_name, description, group, toolchain, user_python_version):
     # If toolchain/Python version not provided, check ebroot as normal
@@ -101,8 +87,12 @@ def create_virtualenv(venv_name, description, group, toolchain, user_python_vers
         sys.exit(1)
 
     if group != "":
-        if check_group(group):
+        if check_group(group) or group in get_global_groups():
             group_metaloc = get_group_metaloc()
+            group_env_dir = os.path.join(group_metaloc, group, 'virtual_envs')
+            if not os.access(group_env_dir, os.W_OK | os.X_OK):
+                print(f"Error: You do not have permission to manage group '{group}'.")
+                sys.exit(1)
             venv_path = os.path.join(group_metaloc, group, 'virtual_envs', venv_name)
             metadata_file = os.path.join(group_metaloc, group, 'virtual_envs', 'metadata.json')
             log_file = os.path.join(group_metaloc, group, 'virtual_envs', 'creation.log')
@@ -226,4 +216,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
