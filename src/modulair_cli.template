@@ -132,13 +132,24 @@ def cmd_create(args):
     else:
         creation_command = f"source /etc/profile && module load {toolchain} && python3 -m venv --system-site-packages {venv_path}"
     result = subprocess.run(creation_command, shell=True, executable='/bin/bash', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
+
+    activate_script = os.path.join(venv_path, 'bin', 'activate')
+    pyvenv_cfg = os.path.join(venv_path, 'pyvenv.cfg')
+
+    # Verify the venv was actually created (e.g. quota errors can kill venv
+    # creation partway through, leaving a directory with nothing usable in
+    # it). Without this, the leftover directory blocks recreation via the
+    # "venv already exists" check above, but has no metadata entry, so it
+    # can't be removed with delete_venv either.
+    if result.returncode != 0 or not os.path.exists(pyvenv_cfg) or not os.path.exists(activate_script):
         print(f"Error: Failed to create virtual environment.")
         if result.stderr:
             print(result.stderr.decode('utf-8', errors='replace'))
+        if os.path.exists(venv_path):
+            subprocess.run(["rm", "-rf", venv_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print(f"Removed incomplete environment directory at '{venv_path}'.")
         sys.exit(1)
 
-    activate_script = os.path.join(venv_path, 'bin', 'activate')
     activate_command = ""
     if (user_python_version == "-1" and toolchain == ""):
         activate_command = f"source {activate_script}"
